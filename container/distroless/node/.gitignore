@@ -1,0 +1,14 @@
+node_modules/
+package-lock.json
+
+# ログ
+*.log
+npm-debug.log*
+
+# 環境変数
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db

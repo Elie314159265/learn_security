@@ -1,0 +1,87 @@
+name: Trivy Security Scan
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  security-events: write  # SARIF を GitHub Security タブへアップロードするために必要
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Job 1: リポジトリ内の Dockerfile を検出して
+  #         イメージをビルド → Trivy でスキャン
+  # ──────────────────────────────────────────────
+  scan:
+    name: Trivy Image Scan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Dockerfile が増えるたびにここに追記する
+        # format: { context: <dir>, image: <tag> }
+        include:
+          - context: container/distroless/node
+            image: learn-security/distroless-node
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t ${{ matrix.image }}:${{ github.sha }} \
+            ${{ matrix.context }}
+
+      # ── Trivy: SARIF 出力（GitHub Security タブ連携）──
+      # aquasecurity/trivy-action はタグではなくコミット SHA でピンする
+      # 理由: 2026年3月に Supply Chain インシデントが発生し、
+      #       タグが悪意あるコミットに書き換えられた前例がある。
+      # 現在ピン: v0.35.0 = 57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+      - name: Run Trivy (SARIF)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          image-ref: ${{ matrix.image }}:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          # exit-code はここでは 0 のまま → 後の "fail" ステップで制御
+          exit-code: "0"
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      # ── Trivy: テーブル出力（ログで確認しやすい）──
+      - name: Run Trivy (Table / CI fail on HIGH+CRITICAL)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          image-ref: ${{ matrix.image }}:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"   # HIGH/CRITICAL が1件でもあれば CI を失敗させる
+
+      # ── Trivy: SBOM 生成（CycloneDX 形式）──
+      - name: Generate SBOM (CycloneDX)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        with:
+          image-ref: ${{ matrix.image }}:${{ github.sha }}
+          format: cyclonedx
+          output: sbom-${{ matrix.image != '' && matrix.image || 'app' }}.json
+          exit-code: "0"
+
+      - name: Upload SBOM as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom-${{ matrix.context != '' && hashFiles(matrix.context) || 'app' }}
+          path: sbom-*.json
+          retention-days: 90
