@@ -22,10 +22,11 @@ jobs:
       fail-fast: false
       matrix:
         # Dockerfile が増えるたびにここに追記する
-        # format: { context: <dir>, image: <tag> }
+        # format: { context: <dir>, image: <tag>, slug: <ファイル名用（/を含まない文字列）> }
         include:
           - context: container/distroless/node
             image: learn-security/distroless-node
+            slug: distroless-node
 
     steps:
       - name: Checkout
@@ -70,18 +71,20 @@ jobs:
           exit-code: "1"   # HIGH/CRITICAL が1件でもあれば CI を失敗させる
 
       # ── Trivy: SBOM 生成（CycloneDX 形式）──
+      # matrix.slug を使うことで '/' を含まないファイル名にする
+      # （matrix.image の '/' はパスセパレータとして解釈されディレクトリ扱いになるため）
       - name: Generate SBOM (CycloneDX)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           image-ref: ${{ matrix.image }}:${{ github.sha }}
           format: cyclonedx
-          output: sbom-${{ matrix.image != '' && matrix.image || 'app' }}.json
+          output: sbom-${{ matrix.slug }}.json
           exit-code: "0"
 
       - name: Upload SBOM as artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: sbom-${{ matrix.context != '' && hashFiles(matrix.context) || 'app' }}
-          path: sbom-*.json
+          name: sbom-${{ matrix.slug }}
+          path: sbom-${{ matrix.slug }}.json
           retention-days: 90
