@@ -11,6 +11,6 @@ FROM gcr.io/distroless/nodejs24-debian13:nonroot AS app
 ARG APP_DIR="/app"
 WORKDIR $APP_DIR
 COPY --from=base --chown=nonroot:nonroot $APP_DIR .
-COPY --fron=base --chown=nonroot:nonroot /logs /logs
+COPY --from=base --chown=nonroot:nonroot /logs /logs
 EXPOSE 3000
 CMD ["index.js"]
