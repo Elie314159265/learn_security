@@ -4,8 +4,7 @@ WORKDIR $APP_DIR
 COPY . .
 RUN npm install --omit=dev
 RUN npm run build
-# ログディレクトリを nonroot所有で作成
-RUN mkdir /logs && chown -R nonroot:nonroot /logs
+RUN mkdir /logs
 
 FROM gcr.io/distroless/nodejs24-debian13:nonroot AS app
 ARG APP_DIR="/app"
