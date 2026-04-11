@@ -4,7 +4,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - app-logs:/app/logs
+      - app-logs:/logs
     restart: unless-stopped
 
   prometheus:

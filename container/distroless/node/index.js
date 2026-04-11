@@ -27,7 +27,7 @@ const httpRequestDurationMs = new client.Histogram({
   registers: [register]
 })
 
-const logDir = '/app/logs'
+const logDir = '/logs'
 const logFile = path.join(logDir, 'access.log')
 
 // ミドルウェア: メトリクス計測 + アクセスログ記録
