@@ -30,8 +30,12 @@ learn_security/
             ├── docker-compose.yml   # アプリ + 観測基盤をまとめて定義
             ├── Dockerfile
             ├── prometheus.yml       # Prometheus スクレイプ設定
+            ├── fluent-bit/          # Fluent Bit 設定（fluent-bit.conf, parsers.conf）
+            ├── loki/                # Loki 設定（loki-config.yml）
+            ├── grafana/             # Grafana プロビジョニング設定
             ├── <アプリソース>
-            └── PENETRATION.md       # 攻撃記録（必須）
+            ├── PENETRATION.md       # 攻撃記録（必須）
+            └── OBSERVABILITY.md     # メトリクス・ログ解析手順（任意）
 ```
 
 ---
@@ -52,9 +56,12 @@ services:
   prometheus:    # メトリクス収集（ポート 9090）
   grafana:       # 可視化（ポート 3001 など app と被らないポート）
   node-exporter: # ホストメトリクス（ポート 9100）
+  cadvisor:      # コンテナメトリクス（ポート 8080）
+  loki:          # ログ保存（ポート 3100）
+  fluent-bit:    # ログ収集・転送（ポート 24224）
 ```
 
-アプリのログは Volume で永続化する。
+アプリのログは Volume で永続化し、**stdout にも出力**する（Loki へ流すため）。
 
 ```yaml
 volumes:
@@ -68,18 +75,38 @@ volumes:
   - app-logs:/app/logs
 ```
 
-Node.js アプリの場合は `prom-client` でアプリ層メトリクスを `/metrics` エンドポイントに公開し、Prometheus がスクレイプする。
+各サービスには Docker の `fluentd` ログドライバーを設定し、stdout/stderr を Fluent Bit へ送る。
+`fluentd-async: "true"` を必ず指定し、Fluent Bit の起動状態がアプリの可用性に影響しないようにする。
+**fluent-bit サービス自身にはログドライバーを設定しない（自己参照になるため）。**
 
-### Step 3 — コンテナ起動 & ログ確認
+```yaml
+# fluent-bit 以外の全サービスに追加
+logging:
+  driver: fluentd
+  options:
+    fluentd-address: localhost:24224
+    fluentd-async: "true"
+    tag: "{{.Name}}"
+```
+
+Node.js アプリの場合は `prom-client` でアプリ層メトリクスを `/metrics` エンドポイントに公開し、Prometheus がスクレイプする。
+アクセスログは `process.stdout.write()` で stdout にも出力し、Loki で検索できるようにする。
+
+### Step 3 — コンテナ起動 & ヘルスチェック
 
 ```bash
 docker compose up -d --build
 
-# アプリログ（リアルタイム）
-docker logs -f <container>
+# 全サービスの起動確認
+docker compose ps
 
-# Volume に永続化されたログ
-docker compose exec app cat /app/logs/access.log
+# 各サービスのヘルスチェック
+curl http://localhost:3000/          # アプリ
+curl http://localhost:3100/ready     # Loki（"ready" が返れば OK）
+curl http://localhost:2020/api/v1/health  # Fluent Bit
+
+# Fluent Bit の受信・転送状況（errors と dropped_records が 0 であることを確認）
+curl -s http://localhost:2020/api/v1/metrics | python3 -m json.tool
 ```
 
 ### Step 4 — 静的脆弱性スキャン（Trivy）
@@ -127,16 +154,52 @@ trivy image --format cyclonedx --output sbom.json <image>
 
 攻撃中・後に以下を確認する。
 
+#### メトリクス（Prometheus / PromQL）
+
 ```bash
-# Prometheus でリクエスト数・レイテンシを確認
-curl http://localhost:9090/api/v1/query?query=http_requests_total
+# リクエスト数・レイテンシを確認
+curl -s "http://localhost:9090/api/v1/query" \
+  --data-urlencode 'query=sum(rate(http_requests_total[1m])) by (method, path, status)'
+
+# 4xx / 5xx エラー率
+curl -s "http://localhost:9090/api/v1/query" \
+  --data-urlencode 'query=sum(rate(http_requests_total{status=~"4.."}[1m]))'
 
 # Grafana ダッシュボードで可視化（ブラウザ）
 # http://localhost:3001
-
-# アプリログから異常リクエストを抽出
-docker logs <container> 2>&1 | grep -E "4[0-9]{2}|5[0-9]{2}|error|Error"
 ```
+
+#### ログ（Loki / LogQL）
+
+```bash
+START=$(date -d '1 hour ago' +%s)000000000
+END=$(date +%s)000000000
+
+# アプリの全ログを取得
+curl -s "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={container_name="/<stack>-app-1"}' \
+  --data-urlencode "start=$START" --data-urlencode "end=$END" \
+  --data-urlencode "limit=100" | python3 -m json.tool
+
+# 攻撃パターンを LogQL で検出
+# パストラバーサル
+curl -s "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={container_name="/<stack>-app-1"} |~ "(\\.\\./|%2e%2e|etc/passwd)"' \
+  --data-urlencode "start=$START" --data-urlencode "end=$END" --data-urlencode "limit=50"
+
+# SQLi
+curl -s "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={container_name="/<stack>-app-1"} |~ "(?i)(union|select|drop|--)"' \
+  --data-urlencode "start=$START" --data-urlencode "end=$END" --data-urlencode "limit=50"
+
+# 4xx / 5xx エラー
+curl -s "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={container_name="/<stack>-app-1"} |~ " [45][0-9]{2} "' \
+  --data-urlencode "start=$START" --data-urlencode "end=$END" --data-urlencode "limit=50"
+```
+
+> Grafana の Explore（データソース: Loki）でも同じクエリをインタラクティブに実行できる。  
+> `container_name` の値は `/node-app-1` のようにスラッシュが付く点に注意。
 
 ### Step 7 — 結果報告（PENETRATION.md）
 
@@ -222,7 +285,7 @@ docker logs <container> 2>&1 | grep -E "4[0-9]{2}|5[0-9]{2}|error|Error"
 - 日々新しい CVE が公開されるため、スキャン実施時は最新の脆弱性情報を Web 検索で補完する
 - コンテナ起動前に `trivy image` で静的スキャンを行う
 - `PENETRATION.md` には実際のコマンド出力を省略せず記録する
-- コンテナの観測基盤（Prometheus / Grafana）を起動してから攻撃を開始し、攻撃前後のメトリクスを比較する
+- コンテナの観測基盤（Prometheus / Grafana / Loki / Fluent Bit）を起動してから攻撃を開始し、攻撃前後のメトリクスとログを比較する
 - 意図的に脆弱なコードを追加する場合は必ずユーザに確認を取る
 - 攻撃対象は**ローカル環境のみ**とする
 - 新しいテーマを開始するとき（Step 1 の冒頭）は `THEMES.md` の該当カテゴリセクションに新しい行を追加し、ステータスを「進行中」とする。カテゴリが存在しない場合は新セクションを作成する
