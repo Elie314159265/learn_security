@@ -216,6 +216,114 @@
       "fieldConfig": {
         "defaults": { "unit": "ms" }
       }
+    },
+    {
+      "id": 12,
+      "title": "── Container Metrics (cAdvisor) ──",
+      "type": "text",
+      "gridPos": { "x": 0, "y": 40, "w": 24, "h": 2 },
+      "options": { "content": "## Container Metrics (cAdvisor)\ncgroup ベースのコンテナ別リソース使用量", "mode": "markdown" }
+    },
+    {
+      "id": 13,
+      "title": "Container CPU Usage (cores)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 42, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(container_cpu_usage_seconds_total{image!=\"\"}[1m])) by (name)",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } }
+      }
+    },
+    {
+      "id": 14,
+      "title": "Container Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 42, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "container_memory_working_set_bytes{image!=\"\"}",
+          "legendFormat": "{{name}} working_set",
+          "refId": "A"
+        },
+        {
+          "expr": "container_memory_usage_bytes{image!=\"\"}",
+          "legendFormat": "{{name}} usage",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" }
+      }
+    },
+    {
+      "id": 15,
+      "title": "Container Network RX (bytes/sec)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 50, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(container_network_receive_bytes_total{image!=\"\"}[1m])) by (name)",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      }
+    },
+    {
+      "id": 16,
+      "title": "Container Network TX (bytes/sec)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 50, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(container_network_transmit_bytes_total{image!=\"\"}[1m])) by (name)",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      }
+    },
+    {
+      "id": 17,
+      "title": "Container Filesystem Usage",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 58, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "container_fs_usage_bytes{image!=\"\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" }
+      }
+    },
+    {
+      "id": 18,
+      "title": "Container Restart Count",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 58, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "container_last_seen{image!=\"\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
     }
   ]
 }
