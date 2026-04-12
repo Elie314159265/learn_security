@@ -40,6 +40,7 @@ app.use((req, res, next) => {
     httpRequestDurationMs.observe(labels, duration)
 
     const entry = `${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms\n`
+    process.stdout.write(entry)
     fs.appendFile(logFile, entry, err => {
       if (err) console.error('Log write failed:', err)
     })

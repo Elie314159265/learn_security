@@ -324,6 +324,75 @@
       "fieldConfig": {
         "defaults": { "unit": "short" }
       }
+    },
+    {
+      "id": 19,
+      "title": "Logs — All Containers",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 66, "w": 24, "h": 10 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{job=\"fluent-bit\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+    {
+      "id": 20,
+      "title": "Logs — HTTP 4xx / 5xx エラー",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 76, "w": 24, "h": 10 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{job=\"fluent-bit\", container_name=~\".+\"} |~ \"\\\\b[45][0-9]{2}\\\\b\"",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+    {
+      "id": 21,
+      "title": "Logs — 攻撃パターン検出（パストラバーサル / SQLi）",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 86, "w": 24, "h": 10 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{job=\"fluent-bit\"} |~ \"(\\\\.\\\\./|%2e%2e|%252e|union|select|insert|drop|'--|;--| OR | AND )\"",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
     }
   ]
 }
